@@ -11,42 +11,47 @@ parser.add_argument('--load', default=None, help='name of model to load')
 parser.add_argument('--update', default=None, help='path to file to update graph')
 parser.add_argument('--display', default=False, action='store_true', help='display details of checkpoint')
 parser.add_argument('--checkpoint', default='default.pkl', help='name of checkpoint to update')
+parser.add_argument('--bidi', default=False, action='store_true', help='bidirectional link updation')
 
 class TokenGraphEmbedding():
     def __init__(self, args):    
+        self.args = args
         self.num_nodes = 0
         self.tot_weight = 0
         self.all_tokens = []  
         self.adj = {} 
         self.w2i = {}
+        self.bidi = args.bidi
 
         if(args.create is not None):
-            print("Creating model")
+            print("Creating model {}".format(args.create))
             self.model_dir = os.path.join('checkpoints', args.create)
             if(not os.path.exists(self.model_dir)): #create new model dir
                 os.mkdir(self.model_dir)
             else:
                 exit("Model dir already exists, load instead.")
             self.save_path = os.path.join(self.model_dir, args.checkpoint)
-            self.log_file = open(os.path.join(self.model_dir, 'log.txt'), 'a')
         else: 
-            print("Loading model")
             self.model_dir = os.path.join('checkpoints', args.load)
             self.save_path = os.path.join(self.model_dir, args.checkpoint)
-            self.log_file = open(os.path.join(self.model_dir, 'log.txt'), 'a')
+            print("Loading model from {}".format(self.save_path))
             self.load()
 
     def save(self):
         with open(self.save_path, 'wb') as handle:
-            print(type(self))
             pickle.dump(self, handle)
     
+    def create_embds(self): #create embeddings from self.adj
+        for i in range(self.num_nodes):
+            pass
+    
     def load(self):
-        with open(self.save_path, 'rb') as handle:
-            try:
+        try:
+            with open(self.save_path, 'rb') as handle:
                 b = pickle.load(handle)
-            except:
-                exit("failed to load checkpoint, ensure the checkpoint file is not empty.")
+        except:
+            print("failed to load checkpoint, updating with new object.")
+            return
         self.init_from_obj(b)
 
     #copy constructor    
@@ -56,20 +61,19 @@ class TokenGraphEmbedding():
         self.adj = b.adj
         self.tot_weight = b.tot_weight
     
-    def display(self, print_adj=False):
-        print("num_nodes: {}".format(self.num_nodes))
-        print("tot_weight: {}".format(self.tot_weight))
-        print("all_tokens: {}".format(self.all_tokens))
-        
-        if(print_adj):
-            print("\nAdjacency Matrix: \n")
+    def write_mdata(self):
+        with open(os.path.join(t.model_dir, 'mdata.txt'), 'a') as f:
+            f.write("num_nodes: {} \n".format(self.num_nodes))
+            f.write("tot_weight: {} \n".format(self.tot_weight))
+            # print("all_tokens: {}".format(self.all_tokens))
+            f.write("\nAdjacency Matrix: \n")
             for token in self.all_tokens:
-                print(token)
+                f.write(token + '\n')
                 for neigh in self.adj[token]:
-                    print("\t {} : {}".format(neigh,self.adj[token][neigh]))
-                print()
+                    f.write("\t {} : {} \n".format(neigh,self.adj[token][neigh]))
+                f.write('\n')
 
-    def update_link(self, token_src, token_dst, weight, link_type="bidirectional",stop=False):
+    def update_link(self, token_src, token_dst, weight, stop=False):
         #check if this token exists
         if(token_src not in self.adj):
             self.adj[token_src] = {}
@@ -82,7 +86,7 @@ class TokenGraphEmbedding():
         # update dst -> src link
         self.adj[token_src][token_dst] += weight     
         self.tot_weight += weight   
-        if(link_type=="bidirectional"):
+        if(args.bidi): #node updates neighbours from left and right
             if(not stop):
                 self.update_link(token_dst, token_src, weight, stop=True)
 
@@ -91,13 +95,13 @@ class TokenGraphEmbedding():
             sents = f.readlines()
 
         for sent in sents:
-            sent = self.clean_line(sent)
+            sent = clean_line(sent)
             tokens = sent.split(' ')
             for i in tqdm(range(len(tokens))):
                 if(i == 0):
                     continue
                 self.update_link(token_src=tokens[i], token_dst=tokens[i-1], weight=1)
-        t.save()
+        self.save()
     
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -106,12 +110,15 @@ if __name__ == "__main__":
 
     #create/load the model
     t = TokenGraphEmbedding(args)
+    log_file = open(os.path.join(t.model_dir, 'log.txt'), 'a')
     
     if(args.update is not None):
         t.update_graph(from_file=args.update)
-
+        log_file.write("updated from {} \n".format(args.update))
     if(args.display):
-        t.display()
+        t.write_mdata()
+
+    log_file.close()
     
 
     

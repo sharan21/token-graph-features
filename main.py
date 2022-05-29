@@ -15,6 +15,7 @@ import random
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--model-name', default=None, help='name of model dir')
+parser.add_argument('--dataset', default=None, help='name of dataset')
 parser.add_argument('--update', default=None,
 					help='path to file to update graph')
 parser.add_argument('--write-mdata', default=False,
@@ -29,6 +30,8 @@ parser.add_argument('--create-embds', default=False,
 					action='store_true', help='create embedding matrix of dim v*v')
 parser.add_argument('--m', type=int, default=100, metavar='N',
 					help='num of samples for importance sampling estimate')
+parser.add_argument('--window', type=int, default=1, metavar='N',
+					help='length of window')
 
 class TokenGraphEmbedding():
 	def __init__(self, args):
@@ -36,31 +39,32 @@ class TokenGraphEmbedding():
 		self.num_nodes = 0
 		self.tot_weight = 0
 		self.i2w = {}
-		self.adj = {}
 		self.w2i = {}
+		self.adj = {}
 		self.bidi = args.bidi
+		self.window = args.window
 
 		#create/load the model
-		self.model_dir = os.path.join('checkpoints', args.model_name)
+		self.model_dir = os.path.join('checkpoints', args.dataset, args.model_name)
 		if(not os.path.exists(self.model_dir)):  # create new model dir
 			os.mkdir(self.model_dir)
 			print("Creating model dir {}".format(args.model_name))		
 		self.save_path = os.path.join(self.model_dir, args.checkpoint)
-		# print("Loading model from {}".format(self.save_path))
 		self.load()
 
 	def save(self):
 		with open(self.save_path, 'wb') as handle:
 			pickle.dump(self, handle)
 
-	def load(self):
+	def load(self): #load from .pkl file
 		try:
 			with open(self.save_path, 'rb') as handle:
 				b = pickle.load(handle)
-				print("Loaded checkpoint {}".format(self.save_path))
 				self.init_from_obj(b)
+				print("Loaded checkpoint {}".format(self.save_path))
+				print(self.args)
 		except:
-			print("Creating new checkpoint.")
+			print("Creating new checkpoint {}".format(self.save_path))
 
 	def create_embds(self):  # create embeddings from self.adj
 		assert(self.num_nodes == len(self.adj) == len(self.i2w) == len(self.w2i))
@@ -72,15 +76,19 @@ class TokenGraphEmbedding():
 				embds[i][j] = self.adj[word][nei]
 		assert(embds.sum() == self.tot_weight)
 		embds = (nn.Softmax(dim=-1))(embds)
+		with open(os.path.join(self.model_dir, 'embds.pkl'), 'wb') as handle: #save embds
+			pickle.dump(embds.numpy(), handle)
 		return embds.numpy()
 
 	def init_from_obj(self, b):  # copy constructors
+		self.args = b.args
 		self.num_nodes = b.num_nodes
-		self.i2w = b.i2w
-		self.adj = b.adj
 		self.tot_weight = b.tot_weight
+		self.i2w = b.i2w
 		self.w2i = b.w2i
+		self.adj = b.adj
 		self.bidi = b.bidi
+		self.window = b.window
 
 	def write_mdata(self, write_adj=False):
 		with open(os.path.join(t.model_dir, 'mdata.txt'), 'w') as f:
@@ -115,14 +123,14 @@ class TokenGraphEmbedding():
 	def update_graph(self, from_file):
 		with open(from_file, "r") as f:
 			sents = f.readlines()
-		for sent in sents:
+		for i in tqdm(range(len(sents))):
+			sent = sents[i]
 			sent = clean_line(sent)
 			tokens = sent.split(' ')
-			for i in tqdm(range(len(tokens))):
-				if(i == 0):
-					continue
-				self.update_link(
-					token_src=tokens[i], token_dst=tokens[i-1], weight=1)
+			for i in range(len(tokens)):
+				for j in range(1, self.window+1):
+					if(i-j >= 0):
+						self.update_link(token_src=tokens[i], token_dst=tokens[i-j], weight=1)
 		self.save()
 
 

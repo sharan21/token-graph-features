@@ -10,10 +10,11 @@ from MulticoreTSNE import MulticoreTSNE as TSNE
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch
+import random
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--create', default=None, help='name of model to create')
-parser.add_argument('--load', default=None, help='name of model to load')
+
+parser.add_argument('--model-name', default=None, help='name of model dir')
 parser.add_argument('--update', default=None,
 					help='path to file to update graph')
 parser.add_argument('--write-mdata', default=False,
@@ -39,19 +40,14 @@ class TokenGraphEmbedding():
 		self.w2i = {}
 		self.bidi = args.bidi
 
-		if(args.create is not None):
-			print("Creating model {}".format(args.create))
-			self.model_dir = os.path.join('checkpoints', args.create)
-			if(not os.path.exists(self.model_dir)):  # create new model dir
-				os.mkdir(self.model_dir)
-			else:
-				exit("Model dir already exists, load instead.")
-			self.save_path = os.path.join(self.model_dir, args.checkpoint)
-		else:
-			self.model_dir = os.path.join('checkpoints', args.load)
-			self.save_path = os.path.join(self.model_dir, args.checkpoint)
-			print("Loading model from {}".format(self.save_path))
-			self.load()
+		#create/load the model
+		self.model_dir = os.path.join('checkpoints', args.model_name)
+		if(not os.path.exists(self.model_dir)):  # create new model dir
+			os.mkdir(self.model_dir)
+			print("Creating model dir {}".format(args.model_name))		
+		self.save_path = os.path.join(self.model_dir, args.checkpoint)
+		# print("Loading model from {}".format(self.save_path))
+		self.load()
 
 	def save(self):
 		with open(self.save_path, 'wb') as handle:
@@ -61,10 +57,10 @@ class TokenGraphEmbedding():
 		try:
 			with open(self.save_path, 'rb') as handle:
 				b = pickle.load(handle)
+				print("Loaded checkpoint {}".format(self.save_path))
+				self.init_from_obj(b)
 		except:
-			print("failed to load checkpoint, updating with new object.")
-			return
-		self.init_from_obj(b)
+			print("Creating new checkpoint.")
 
 	def create_embds(self):  # create embeddings from self.adj
 		assert(self.num_nodes == len(self.adj) == len(self.i2w) == len(self.w2i))
@@ -132,8 +128,6 @@ class TokenGraphEmbedding():
 
 if __name__ == "__main__":
 	args = parser.parse_args()
-	assert(not(args.create and args.load))
-	assert(args.create or args.load)
 
 	# create/load the model
 	t = TokenGraphEmbedding(args)
@@ -157,13 +151,14 @@ if __name__ == "__main__":
 		english = [t.i2w[k] for k in t.i2w]
 		tsne = TSNE(n_jobs=10)
 		res = tsne.fit_transform(z)
+		min_x, min_y = np.amin(res, axis=0)
+		max_x, max_y = np.amax(res, axis=0)
 		print("Done performing TSNE, Plotting...")
 		plt.figure(figsize=(15, 15))
-		plt.xlim(-10, 10)
-		plt.ylim(-10, 10)
-
+		plt.xlim(min_x, max_x)
+		plt.ylim(min_y, max_y)
 		for i in tqdm(range(args.m)):
-			plt.text(res[i,0], res[i,1], english[i], fontsize=7, rotation=30)
-		plt.savefig(os.path.join(t.model_dir, 'tsne-embd.png'))
+			plt.text(res[i,0], res[i,1], english[i], fontsize=random.randint(3, 7), rotation=random.randint(0, 90))
+		plt.savefig(os.path.join(t.model_dir, 'tsne-embd.pdf'))
 		
 	log_file.close()

@@ -1,8 +1,10 @@
-def clean_line(line, bad=[',','.', ';', '(', ')', '/', '`', '%', '"', '-', '\\','\'',]):
+def clean_line(line):
     line = line.strip('\n')
     clean = ''
     for c in line:
-        if c not in bad:
+        if c.isalpha():
             clean += c
+        else:
+            clean += ' '
     return clean
 

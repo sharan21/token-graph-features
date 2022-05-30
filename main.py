@@ -13,7 +13,6 @@ import torch
 import random
 
 parser = argparse.ArgumentParser()
-
 parser.add_argument('--model-name', default=None, help='name of model dir')
 parser.add_argument('--dataset', default=None, help='name of dataset')
 parser.add_argument('--update', default=None,
@@ -28,9 +27,9 @@ parser.add_argument('--embedding-tsne', default=False,
 					action='store_true', help='bidirectional link updation')
 parser.add_argument('--create-embds', default=False,
 					action='store_true', help='create embedding matrix of dim v*v')
-parser.add_argument('--m', type=int, default=100, metavar='N',
+parser.add_argument('--m', type=int, default=9000, metavar='N',
 					help='num of samples for importance sampling estimate')
-parser.add_argument('--window', type=int, default=1, metavar='N',
+parser.add_argument('--window', type=int, default=10, metavar='N',
 					help='length of window')
 
 class TokenGraphEmbedding():
@@ -120,7 +119,16 @@ class TokenGraphEmbedding():
 			if(not stop):
 				self.update_link(token_dst, token_src, weight, stop=True)
 
-	def update_graph(self, from_file):
+	def update_graph_from_dataset(self, dataset):
+		splits = ['train', 'test', 'valid']
+		basepath = './data/annotated/{}'.format(dataset)
+
+		for split in splits:
+			update_file = os.path.join(basepath, '{}.cse'.format(split))
+			print("updating from {}".format(update_file))
+			self.update_graph_from_file(from_file=update_file)
+
+	def update_graph_from_file(self, from_file):
 		with open(from_file, "r") as f:
 			sents = f.readlines()
 		for i in tqdm(range(len(sents))):
@@ -142,7 +150,7 @@ if __name__ == "__main__":
 	log_file = open(os.path.join(t.model_dir, 'log.txt'), 'a')
 
 	if(args.update is not None):
-		t.update_graph(from_file=args.update)
+		t.update_graph_from_dataset(dataset)
 		t.write_mdata()
 		log_file.write("updated from {} \n".format(args.update))
 	
@@ -166,7 +174,7 @@ if __name__ == "__main__":
 		plt.xlim(min_x, max_x)
 		plt.ylim(min_y, max_y)
 		for i in tqdm(range(args.m)):
-			plt.text(res[i,0], res[i,1], english[i], fontsize=random.randint(3, 7), rotation=random.randint(0, 90))
+			plt.text(res[i,0], res[i,1], english[i], fontsize=0.1, rotation=random.randint(0, 90))
 		plt.savefig(os.path.join(t.model_dir, 'tsne-embd.pdf'))
 		
 	log_file.close()
